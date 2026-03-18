@@ -69,7 +69,7 @@ impl ServerHandler for BashBridgeServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::new(
-                "bash-bridge-mcp",
+                "bash-mcp-bridge",
                 env!("CARGO_PKG_VERSION"),
             ))
     }

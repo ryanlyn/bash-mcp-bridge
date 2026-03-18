@@ -66,9 +66,11 @@ pub struct ConfigStore {
 
 impl ConfigStore {
     pub fn new(path: &Path) -> Result<Self> {
-        let config = Config::from_file(path)?;
+        let path = path.canonicalize()
+            .with_context(|| format!("failed to resolve config path: {}", path.display()))?;
+        let config = Config::from_file(&path)?;
         Ok(Self {
-            path: path.to_path_buf(),
+            path,
             config: Arc::new(RwLock::new(config)),
         })
     }

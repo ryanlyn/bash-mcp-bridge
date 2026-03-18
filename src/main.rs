@@ -1,13 +1,13 @@
 use anyhow::Result;
-use bash_bridge_mcp::config::ConfigStore;
-use bash_bridge_mcp::server::BashBridgeServer;
+use bash_mcp_bridge::config::ConfigStore;
+use bash_mcp_bridge::server::BashBridgeServer;
 use clap::Parser;
 use rmcp::ServiceExt;
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "bash-bridge-mcp", about = "MCP server for safe host command execution")]
+#[command(name = "bash-mcp-bridge", about = "MCP server for safe host command execution")]
 struct Cli {
     /// Path to config file
     #[arg(short, long, default_value = "config.toml")]

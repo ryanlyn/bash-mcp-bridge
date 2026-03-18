@@ -1,10 +1,10 @@
-# bash-bridge-mcp
+# bash-mcp-bridge
 
 A Rust MCP server that lets sandboxed agents execute host CLI commands against a binary name whitelist.
 
 ## Problem
 
-Sandboxed environments like Claude Code Cowork run in isolated VMs that can't access host-side CLI tools. Even in non-sandboxed environments, there's value in restricting which binaries an agent can invoke. bash-bridge-mcp bridges this gap with a single MCP tool that validates commands against a whitelist before executing them.
+Sandboxed environments like Claude Code Cowork run in isolated VMs that can't access host-side CLI tools. Even in non-sandboxed environments, there's value in restricting which binaries an agent can invoke. bash-mcp-bridge bridges this gap with a single MCP tool that validates commands against a whitelist before executing them.
 
 ## Design
 

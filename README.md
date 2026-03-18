@@ -1,4 +1,4 @@
-# bash-bridge-mcp
+# bash-mcp-bridge
 
 MCP server that lets sandboxed agents execute host CLI commands against a binary name whitelist.
 
@@ -6,10 +6,10 @@ MCP server that lets sandboxed agents execute host CLI commands against a binary
 
 ```bash
 # stdio transport (for Claude Code CLI)
-bash-bridge-mcp -c config.toml -t stdio
+bash-mcp-bridge -c config.toml -t stdio
 
 # HTTP transport (for Cowork)
-bash-bridge-mcp -c config.toml -t http
+bash-mcp-bridge -c config.toml -t http
 ```
 
 ## Config

