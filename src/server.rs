@@ -8,7 +8,7 @@ use rmcp::{
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ExecuteParams {
-    /// The command to execute (e.g. "gog calendar events primary --json")
+    /// The command to execute (e.g. "gh pr list --json number,title")
     pub command: String,
 }
 

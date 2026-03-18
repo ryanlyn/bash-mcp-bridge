@@ -4,4 +4,4 @@ port = 8741
 timeout = 120
 
 [allowed]
-bins = ["gog", "uv"]
+bins = ["gh", "obsidian"]
