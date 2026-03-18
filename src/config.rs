@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::path::Path;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -53,5 +54,39 @@ impl Config {
         let config: Config = toml::from_str(&content)
             .with_context(|| format!("failed to parse config file: {}", path.display()))?;
         Ok(config)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigStore {
+    path: std::path::PathBuf,
+    config: Arc<RwLock<Config>>,
+}
+
+impl ConfigStore {
+    pub fn new(path: &Path) -> Result<Self> {
+        let config = Config::from_file(path)?;
+        Ok(Self {
+            path: path.to_path_buf(),
+            config: Arc::new(RwLock::new(config)),
+        })
+    }
+
+    pub fn reload(&self) -> Result<()> {
+        let new_config = Config::from_file(&self.path)?;
+        let mut config = self
+            .config
+            .write()
+            .map_err(|e| anyhow::anyhow!("lock poisoned: {e}"))?;
+        *config = new_config;
+        Ok(())
+    }
+
+    pub fn allowed_bins(&self) -> Vec<String> {
+        self.config.read().unwrap().allowed.bins.clone()
+    }
+
+    pub fn timeout(&self) -> u64 {
+        self.config.read().unwrap().server.timeout
     }
 }

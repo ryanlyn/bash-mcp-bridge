@@ -53,3 +53,28 @@ bins = []
         assert!(config.allowed.bins.is_empty());
     }
 }
+
+mod reload_tests {
+    use super::*;
+
+    #[test]
+    fn test_config_reload_updates_bins() {
+        let toml_content = r#"
+[allowed]
+bins = ["gog"]
+"#;
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(toml_content.as_bytes()).unwrap();
+
+        let store = bash_bridge_mcp::config::ConfigStore::new(f.path()).unwrap();
+        assert_eq!(store.allowed_bins(), vec!["gog"]);
+
+        let new_content = r#"
+[allowed]
+bins = ["gog", "uv", "cargo"]
+"#;
+        std::fs::write(f.path(), new_content).unwrap();
+        store.reload().unwrap();
+        assert_eq!(store.allowed_bins(), vec!["gog", "uv", "cargo"]);
+    }
+}
