@@ -29,7 +29,7 @@ Add to your MCP config (`.mcp.json`):
   "mcpServers": {
     "bash-bridge": {
       "command": "bash-mcp-bridge",
-      "args": ["--allow", "gh", "--allow", "obsidian"],
+      "args": ["--allow", "gog"],
       "env": {
         "XDG_CONFIG_HOME": "<env vars are not inherited>"
       }
@@ -55,7 +55,7 @@ port = 8741          # HTTP transport port
 timeout = 120        # command timeout in seconds
 
 [allowed]
-bins = ["gh", "obsidian"]
+bins = ["gog"]
 ```
 
 All fields in `[server]` are optional with the defaults shown above. The config file is watched for changes - whitelist updates take effect on the next `execute` call. CLI `--allow` flags take precedence over the config file, including after reloads.
@@ -71,8 +71,8 @@ Lists the binaries that are allowed and usage hints for each.
 Executes a command on the host.
 
 ```
-execute(command: "gh pr list --json number,title")
-execute(command: "obsidian-cli search 'meeting notes'")
+execute(command: "gog --help")
+execute(command: "gog gmail --help")
 ```
 
 ## Safety
