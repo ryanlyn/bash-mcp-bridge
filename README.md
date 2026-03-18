@@ -20,18 +20,7 @@ cargo build --release
 
 ## Usage
 
-```bash
-# stdio transport (default) with a config file
-bash-mcp-bridge -c config.toml
-
-# stdio with inline allow list (no config file needed)
-bash-mcp-bridge --allow gh --allow obsidian
-
-# HTTP transport for remote/sandboxed clients
-bash-mcp-bridge -c config.toml -t http
-```
-
-### Claude Code
+### Claude Cowork
 
 Add to your MCP config (`.mcp.json`):
 
@@ -72,7 +61,7 @@ All fields in `[server]` are optional with the defaults shown above. The config 
 
 ### `list_allowed`
 
-Lists the binaries that are allowed and usage hints. Agents should call this first to discover available commands.
+Lists the binaries that are allowed and usage hints for each.
 
 ### `execute`
 
