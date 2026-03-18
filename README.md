@@ -29,7 +29,10 @@ Add to your MCP config (`.mcp.json`):
   "mcpServers": {
     "bash-bridge": {
       "command": "bash-mcp-bridge",
-      "args": ["--allow", "gh", "--allow", "obsidian"]
+      "args": ["--allow", "gh", "--allow", "obsidian"],
+      "env": {
+        "XDG_CONFIG_HOME": "<env vars are not inherited>"
+      }
     }
   }
 }
