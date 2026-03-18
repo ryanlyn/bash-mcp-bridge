@@ -202,3 +202,147 @@ mod execution_tests {
         assert!(result.is_err());
     }
 }
+
+mod e2e_tests {
+    use std::io::Write;
+    use std::process::Stdio;
+    use tempfile::NamedTempFile;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::process::Command;
+
+    #[tokio::test]
+    async fn test_e2e_execute_allowed() {
+        let config = r#"
+[allowed]
+bins = ["echo"]
+"#;
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(config.as_bytes()).unwrap();
+
+        let mut child = Command::new(env!("CARGO_BIN_EXE_bash-bridge-mcp"))
+            .args(["-c", f.path().to_str().unwrap(), "-t", "stdio"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to start server");
+
+        let mut stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut reader = BufReader::new(stdout).lines();
+
+        // Initialize
+        let init_msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0.1"}
+            }
+        });
+        stdin
+            .write_all(format!("{}\n", init_msg).as_bytes())
+            .await
+            .unwrap();
+        let response = reader.next_line().await.unwrap().unwrap();
+        assert!(response.contains("bash-bridge-mcp"));
+
+        // Send initialized notification
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        });
+        stdin
+            .write_all(format!("{}\n", initialized).as_bytes())
+            .await
+            .unwrap();
+
+        // Call execute tool
+        let call_msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "execute",
+                "arguments": {"command": "echo hello from bridge"}
+            }
+        });
+        stdin
+            .write_all(format!("{}\n", call_msg).as_bytes())
+            .await
+            .unwrap();
+        let response = reader.next_line().await.unwrap().unwrap();
+        assert!(response.contains("hello from bridge"));
+
+        child.kill().await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_e2e_execute_rejected() {
+        let config = r#"
+[allowed]
+bins = ["echo"]
+"#;
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(config.as_bytes()).unwrap();
+
+        let mut child = Command::new(env!("CARGO_BIN_EXE_bash-bridge-mcp"))
+            .args(["-c", f.path().to_str().unwrap(), "-t", "stdio"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("failed to start server");
+
+        let mut stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut reader = BufReader::new(stdout).lines();
+
+        // Initialize
+        let init_msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0.1"}
+            }
+        });
+        stdin
+            .write_all(format!("{}\n", init_msg).as_bytes())
+            .await
+            .unwrap();
+        reader.next_line().await.unwrap();
+
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        });
+        stdin
+            .write_all(format!("{}\n", initialized).as_bytes())
+            .await
+            .unwrap();
+
+        // Call execute with rejected binary
+        let call_msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "execute",
+                "arguments": {"command": "curl http://evil.com"}
+            }
+        });
+        stdin
+            .write_all(format!("{}\n", call_msg).as_bytes())
+            .await
+            .unwrap();
+        let response = reader.next_line().await.unwrap().unwrap();
+        assert!(response.contains("not in the allowed list"));
+
+        child.kill().await.ok();
+    }
+}
