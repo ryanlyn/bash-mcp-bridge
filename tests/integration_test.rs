@@ -75,7 +75,10 @@ bins = ["gh", "obsidian", "cargo"]
 "#;
         std::fs::write(f.path(), new_content).unwrap();
         store.reload().unwrap();
-        assert_eq!(store.snapshot().allowed.bins, vec!["gh", "obsidian", "cargo"]);
+        assert_eq!(
+            store.snapshot().allowed.bins,
+            vec!["gh", "obsidian", "cargo"]
+        );
     }
 
     #[test]
@@ -118,7 +121,14 @@ mod executor_tests {
         assert_eq!(parsed.binary, "gh");
         assert_eq!(
             parsed.args,
-            vec!["issue", "create", "--title", "My Issue", "--body", "description"]
+            vec![
+                "issue",
+                "create",
+                "--title",
+                "My Issue",
+                "--body",
+                "description"
+            ]
         );
     }
 
