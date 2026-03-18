@@ -48,7 +48,11 @@ pub async fn execute(command: &str, allowed_bins: &[String], timeout_secs: u64) 
     let parsed = parse_command(command)?;
 
     if !allowed_bins.iter().any(|b| b == &parsed.binary) {
-        bail!("binary '{}' is not in the allowed list", parsed.binary);
+        bail!(
+            "binary '{}' is not in the allowed list. Allowed: {}",
+            parsed.binary,
+            allowed_bins.join(", ")
+        );
     }
 
     let future = Command::new(&parsed.binary)
