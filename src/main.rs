@@ -7,7 +7,10 @@ use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "bash-mcp-bridge", about = "MCP server for safe host command execution")]
+#[command(
+    name = "bash-mcp-bridge",
+    about = "MCP server for safe host command execution"
+)]
 struct Cli {
     /// Path to config file (optional if --allow is provided)
     #[arg(short, long)]
@@ -36,9 +39,10 @@ async fn main() -> Result<()> {
     }
 
     let config = ConfigStore::new(cli.config.as_deref(), cli.allow)?;
+    let initial_config = config.snapshot();
 
     tracing::info!(
-        bins = ?config.allowed_bins(),
+        bins = ?initial_config.allowed.bins,
         "loaded config"
     );
 
@@ -58,13 +62,13 @@ async fn main() -> Result<()> {
             server.waiting().await?;
         }
         "http" => {
-            let host = config.host();
-            let port = config.port();
+            let server_config = config.snapshot().server;
+            let host = server_config.host;
+            let port = server_config.port;
             let addr = format!("{host}:{port}");
 
             use rmcp::transport::streamable_http_server::{
-                StreamableHttpService,
-                session::local::LocalSessionManager,
+                session::local::LocalSessionManager, StreamableHttpService,
             };
 
             let config_clone = config.clone();

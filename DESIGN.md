@@ -14,8 +14,8 @@ One MCP tool: `execute(command: string)` returns `{stdout, stderr, exit_code}`.
 
 ### Safety
 
-1. Parse the command string into argv (shell-style tokenization, respecting quotes)
-2. Reject if any shell metacharacters are present: `|`, `;`, `&&`, `||`, `$()`, backticks, `>`, `<`, `&`
+1. Tokenize the command string into argv (shell-style tokenization, respecting quotes)
+2. Parse into argv first, then reject standalone shell operator tokens such as `|`, `;`, `&&`, `||`, `>`, `<`, `&`
 3. Resolve argv[0] via the host's PATH
 4. Check if the binary name matches an entry in `allowed.bins`
 5. Execute via subprocess (no shell), return stdout, stderr, and exit code
@@ -37,6 +37,7 @@ bins = ["gog", "uv"]
 - `allowed.bins` is a list of binary names (not absolute paths)
 - Binary resolution uses the host's PATH - whichever the PATH resolves first wins
 - Config file is watched for changes; whitelist updates take effect on next `execute` call
+- CLI `--allow` overrides take precedence over file-backed `allowed.bins`, including after reloads
 
 ### Transport
 
@@ -45,9 +46,9 @@ bins = ["gog", "uv"]
 
 ### Error handling
 
-- **Rejected**: binary not in whitelist or shell metacharacters detected. Returns a clear error message.
+- **Rejected**: binary not in whitelist or standalone shell operator tokens detected. Returns a clear error message.
 - **Execution failure**: binary not found on PATH, permission denied, timeout. Returns the OS-level error.
-- **Non-zero exit**: not a server error. Returns `{stdout, stderr, exit_code}` as-is.
+- **Non-zero exit**: not a server error. Returns `{stdout, stderr, exit_code}` as-is in structured tool output.
 
 ### Non-goals
 

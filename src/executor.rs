@@ -4,7 +4,21 @@ use anyhow::{bail, Result};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-const SHELL_METACHARACTERS: &[&str] = &["|", ";", "&&", "||", "$(", "`", ">", "<", "&"];
+const UNSUPPORTED_SHELL_TOKENS: &[&str] = &["|", ";", "&&", "||", ">", "<", "&"];
+
+fn find_unsupported_shell_syntax(tokens: &[String]) -> Option<&str> {
+    for (index, token) in tokens.iter().enumerate() {
+        if UNSUPPORTED_SHELL_TOKENS.contains(&token.as_str()) {
+            return Some(token);
+        }
+
+        if token.ends_with(';') && index + 1 < tokens.len() {
+            return Some(";");
+        }
+    }
+
+    None
+}
 
 #[derive(Debug, PartialEq)]
 pub struct ParsedCommand {
@@ -18,17 +32,15 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand> {
         bail!("command is empty");
     }
 
-    for meta in SHELL_METACHARACTERS {
-        if command.contains(meta) {
-            bail!("shell metacharacter '{}' is not allowed", meta);
-        }
-    }
-
     let tokens = shlex::split(command)
         .ok_or_else(|| anyhow::anyhow!("failed to parse command: mismatched quotes"))?;
 
     if tokens.is_empty() {
         bail!("command is empty after parsing");
+    }
+
+    if let Some(token) = find_unsupported_shell_syntax(&tokens) {
+        bail!("shell token '{}' is not supported", token);
     }
 
     Ok(ParsedCommand {
@@ -44,7 +56,11 @@ pub struct ExecuteResult {
     pub exit_code: i32,
 }
 
-pub async fn execute(command: &str, allowed_bins: &[String], timeout_secs: u64) -> Result<ExecuteResult> {
+pub async fn execute(
+    command: &str,
+    allowed_bins: &[String],
+    timeout_secs: u64,
+) -> Result<ExecuteResult> {
     let parsed = parse_command(command)?;
 
     if !allowed_bins.iter().any(|b| b == &parsed.binary) {
@@ -55,9 +71,7 @@ pub async fn execute(command: &str, allowed_bins: &[String], timeout_secs: u64) 
         );
     }
 
-    let future = Command::new(&parsed.binary)
-        .args(&parsed.args)
-        .output();
+    let future = Command::new(&parsed.binary).args(&parsed.args).output();
 
     let output = timeout(Duration::from_secs(timeout_secs), future)
         .await

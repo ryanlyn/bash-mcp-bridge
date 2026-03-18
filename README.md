@@ -2,6 +2,9 @@
 
 MCP server that lets sandboxed agents execute host CLI commands against a binary name whitelist.
 
+Commands are executed directly without a shell. Successful calls return structured
+`stdout`, `stderr`, and `exit_code` data, including non-zero exit codes.
+
 ## Usage
 
 ```bash

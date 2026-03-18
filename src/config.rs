@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -60,36 +60,56 @@ impl Config {
 
 #[derive(Debug, Clone)]
 pub struct ConfigStore {
-    path: std::path::PathBuf,
+    path: Option<PathBuf>,
+    allow_overrides: Option<Vec<String>>,
     config: Arc<RwLock<Config>>,
 }
 
 impl ConfigStore {
     pub fn new(path: Option<&Path>, allow_overrides: Vec<String>) -> Result<Self> {
-        let (resolved_path, mut config) = if let Some(p) = path {
-            let canonical = p.canonicalize()
-                .with_context(|| format!("failed to resolve config path: {}", p.display()))?;
-            let cfg = Config::from_file(&canonical)?;
-            (Some(canonical), cfg)
+        let resolved_path = if let Some(p) = path {
+            Some(
+                p.canonicalize()
+                    .with_context(|| format!("failed to resolve config path: {}", p.display()))?,
+            )
         } else {
-            (None, Config {
-                server: ServerConfig::default(),
-                allowed: AllowedConfig { bins: vec![] },
-            })
+            None
         };
 
-        if !allow_overrides.is_empty() {
-            config.allowed.bins = allow_overrides;
-        }
+        let allow_overrides = (!allow_overrides.is_empty()).then_some(allow_overrides);
+        let mut config = Self::load_config(resolved_path.as_deref())?;
+        Self::apply_allow_overrides(&mut config, allow_overrides.as_deref());
 
         Ok(Self {
-            path: resolved_path.unwrap_or_default(),
+            path: resolved_path,
+            allow_overrides,
             config: Arc::new(RwLock::new(config)),
         })
     }
 
+    fn load_config(path: Option<&Path>) -> Result<Config> {
+        match path {
+            Some(path) => Config::from_file(path),
+            None => Ok(Config {
+                server: ServerConfig::default(),
+                allowed: AllowedConfig { bins: vec![] },
+            }),
+        }
+    }
+
+    fn apply_allow_overrides(config: &mut Config, allow_overrides: Option<&[String]>) {
+        if let Some(allow_overrides) = allow_overrides {
+            config.allowed.bins = allow_overrides.to_vec();
+        }
+    }
+
     pub fn reload(&self) -> Result<()> {
-        let new_config = Config::from_file(&self.path)?;
+        let path = self
+            .path
+            .as_deref()
+            .context("config reload requires a config path")?;
+        let mut new_config = Config::from_file(path)?;
+        Self::apply_allow_overrides(&mut new_config, self.allow_overrides.as_deref());
         let mut config = self
             .config
             .write()
@@ -98,32 +118,26 @@ impl ConfigStore {
         Ok(())
     }
 
-    pub fn allowed_bins(&self) -> Vec<String> {
-        self.config.read().unwrap().allowed.bins.clone()
-    }
-
-    pub fn timeout(&self) -> u64 {
-        self.config.read().unwrap().server.timeout
-    }
-
-    pub fn host(&self) -> String {
-        self.config.read().unwrap().server.host.clone()
-    }
-
-    pub fn port(&self) -> u16 {
-        self.config.read().unwrap().server.port
+    pub fn snapshot(&self) -> Config {
+        self.config.read().expect("config lock poisoned").clone()
     }
 
     pub fn spawn_watcher(&self) -> Result<notify::RecommendedWatcher> {
         let store = self.clone();
-        let path = self.path.clone();
-        let mut watcher = notify::recommended_watcher(
-            move |res: std::result::Result<Event, notify::Error>| {
+        let path = self
+            .path
+            .clone()
+            .context("config watcher requires a config path")?;
+        let mut watcher =
+            notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
                 if let Ok(event) = res {
                     if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
                         match store.reload() {
                             Ok(()) => {
-                                tracing::info!(bins = ?store.allowed_bins(), "config reloaded")
+                                tracing::info!(
+                                    bins = ?store.snapshot().allowed.bins,
+                                    "config reloaded"
+                                )
                             }
                             Err(e) => {
                                 tracing::warn!(%e, "failed to reload config, keeping previous")
@@ -131,8 +145,7 @@ impl ConfigStore {
                         }
                     }
                 }
-            },
-        )?;
+            })?;
         watcher.watch(path.parent().unwrap_or(&path), RecursiveMode::NonRecursive)?;
         Ok(watcher)
     }

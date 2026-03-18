@@ -67,7 +67,7 @@ bins = ["gog"]
         f.write_all(toml_content.as_bytes()).unwrap();
 
         let store = bash_mcp_bridge::config::ConfigStore::new(Some(f.path()), vec![]).unwrap();
-        assert_eq!(store.allowed_bins(), vec!["gog"]);
+        assert_eq!(store.snapshot().allowed.bins, vec!["gog"]);
 
         let new_content = r#"
 [allowed]
@@ -75,7 +75,29 @@ bins = ["gog", "uv", "cargo"]
 "#;
         std::fs::write(f.path(), new_content).unwrap();
         store.reload().unwrap();
-        assert_eq!(store.allowed_bins(), vec!["gog", "uv", "cargo"]);
+        assert_eq!(store.snapshot().allowed.bins, vec!["gog", "uv", "cargo"]);
+    }
+
+    #[test]
+    fn test_config_reload_preserves_allow_overrides() {
+        let toml_content = r#"
+[allowed]
+bins = ["gog"]
+"#;
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(toml_content.as_bytes()).unwrap();
+
+        let store =
+            bash_mcp_bridge::config::ConfigStore::new(Some(f.path()), vec!["echo".into()]).unwrap();
+        assert_eq!(store.snapshot().allowed.bins, vec!["echo"]);
+
+        let new_content = r#"
+[allowed]
+bins = ["curl"]
+"#;
+        std::fs::write(f.path(), new_content).unwrap();
+        store.reload().unwrap();
+        assert_eq!(store.snapshot().allowed.bins, vec!["echo"]);
     }
 }
 
@@ -104,7 +126,7 @@ mod executor_tests {
     fn test_reject_pipe() {
         let result = bash_mcp_bridge::executor::parse_command("gog events | grep foo");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("metacharacter"));
+        assert!(result.unwrap_err().to_string().contains("shell token"));
     }
 
     #[test]
@@ -126,15 +148,17 @@ mod executor_tests {
     }
 
     #[test]
-    fn test_reject_subshell() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events $(whoami)");
-        assert!(result.is_err());
+    fn test_accept_literal_dollar_parens() {
+        let parsed = bash_mcp_bridge::executor::parse_command("echo '$(whoami)'").unwrap();
+        assert_eq!(parsed.binary, "echo");
+        assert_eq!(parsed.args, vec!["$(whoami)"]);
     }
 
     #[test]
-    fn test_reject_backticks() {
-        let result = bash_mcp_bridge::executor::parse_command("gog events `whoami`");
-        assert!(result.is_err());
+    fn test_accept_literal_backticks() {
+        let parsed = bash_mcp_bridge::executor::parse_command("echo '`whoami`'").unwrap();
+        assert_eq!(parsed.binary, "echo");
+        assert_eq!(parsed.args, vec!["`whoami`"]);
     }
 
     #[test]
@@ -150,6 +174,23 @@ mod executor_tests {
     }
 
     #[test]
+    fn test_accept_quoted_pipe_literal() {
+        let parsed = bash_mcp_bridge::executor::parse_command(r#"echo "a|b""#).unwrap();
+        assert_eq!(parsed.binary, "echo");
+        assert_eq!(parsed.args, vec!["a|b"]);
+    }
+
+    #[test]
+    fn test_accept_url_with_ampersand() {
+        let parsed = bash_mcp_bridge::executor::parse_command(
+            r#"echo "https://example.com/?q=rust&lang=en""#,
+        )
+        .unwrap();
+        assert_eq!(parsed.binary, "echo");
+        assert_eq!(parsed.args, vec!["https://example.com/?q=rust&lang=en"]);
+    }
+
+    #[test]
     fn test_reject_empty_command() {
         let result = bash_mcp_bridge::executor::parse_command("");
         assert!(result.is_err());
@@ -160,8 +201,9 @@ mod execution_tests {
     #[tokio::test]
     async fn test_execute_allowed_command() {
         let allowed = vec!["echo".to_string()];
-        let result =
-            bash_mcp_bridge::executor::execute("echo hello world", &allowed, 30).await.unwrap();
+        let result = bash_mcp_bridge::executor::execute("echo hello world", &allowed, 30)
+            .await
+            .unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout.trim(), "hello world");
         assert!(result.stderr.is_empty());
@@ -170,8 +212,7 @@ mod execution_tests {
     #[tokio::test]
     async fn test_execute_rejected_binary() {
         let allowed = vec!["echo".to_string()];
-        let result =
-            bash_mcp_bridge::executor::execute("curl http://evil.com", &allowed, 30).await;
+        let result = bash_mcp_bridge::executor::execute("curl http://evil.com", &allowed, 30).await;
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -182,8 +223,27 @@ mod execution_tests {
     #[tokio::test]
     async fn test_execute_nonzero_exit() {
         let allowed = vec!["false".to_string()];
-        let result = bash_mcp_bridge::executor::execute("false", &allowed, 30).await.unwrap();
+        let result = bash_mcp_bridge::executor::execute("false", &allowed, 30)
+            .await
+            .unwrap();
         assert_ne!(result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_quoted_literals() {
+        let allowed = vec!["echo".to_string()];
+        let result = bash_mcp_bridge::executor::execute(
+            r#"echo "https://example.com/?q=rust&lang=en" "a|b""#,
+            &allowed,
+            30,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            result.stdout.trim(),
+            "https://example.com/?q=rust&lang=en a|b"
+        );
     }
 
     #[tokio::test]
@@ -208,30 +268,39 @@ mod e2e_tests {
     use std::process::Stdio;
     use tempfile::NamedTempFile;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::process::Command;
+    use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
-    #[tokio::test]
-    async fn test_e2e_execute_allowed() {
-        let config = r#"
-[allowed]
-bins = ["echo"]
-"#;
-        let mut f = NamedTempFile::new().unwrap();
-        f.write_all(config.as_bytes()).unwrap();
+    struct TestServer {
+        _config: NamedTempFile,
+        child: Child,
+        stdin: ChildStdin,
+        reader: tokio::io::Lines<BufReader<ChildStdout>>,
+    }
+
+    async fn spawn_stdio_server(config: &str) -> TestServer {
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(config.as_bytes()).unwrap();
 
         let mut child = Command::new(env!("CARGO_BIN_EXE_bash-mcp-bridge"))
-            .args(["-c", f.path().to_str().unwrap(), "-t", "stdio"])
+            .args(["-c", file.path().to_str().unwrap(), "-t", "stdio"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .expect("failed to start server");
 
-        let mut stdin = child.stdin.take().unwrap();
+        let stdin = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
-        let mut reader = BufReader::new(stdout).lines();
 
-        // Initialize
+        TestServer {
+            _config: file,
+            child,
+            stdin,
+            reader: BufReader::new(stdout).lines(),
+        }
+    }
+
+    async fn initialize_server(server: &mut TestServer) -> serde_json::Value {
         let init_msg = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -242,41 +311,85 @@ bins = ["echo"]
                 "clientInfo": {"name": "test", "version": "0.1"}
             }
         });
-        stdin
+        server
+            .stdin
             .write_all(format!("{}\n", init_msg).as_bytes())
             .await
             .unwrap();
-        let response = reader.next_line().await.unwrap().unwrap();
-        assert!(response.contains("bash-mcp-bridge"));
+        let response = server.reader.next_line().await.unwrap().unwrap();
 
-        // Send initialized notification
         let initialized = serde_json::json!({
             "jsonrpc": "2.0",
             "method": "notifications/initialized"
         });
-        stdin
+        server
+            .stdin
             .write_all(format!("{}\n", initialized).as_bytes())
             .await
             .unwrap();
 
-        // Call execute tool
+        serde_json::from_str(&response).unwrap()
+    }
+
+    async fn call_execute(server: &mut TestServer, command: &str) -> serde_json::Value {
         let call_msg = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 2,
             "method": "tools/call",
             "params": {
                 "name": "execute",
-                "arguments": {"command": "echo hello from bridge"}
+                "arguments": {"command": command}
             }
         });
-        stdin
+        server
+            .stdin
             .write_all(format!("{}\n", call_msg).as_bytes())
             .await
             .unwrap();
-        let response = reader.next_line().await.unwrap().unwrap();
-        assert!(response.contains("hello from bridge"));
+        let response = server.reader.next_line().await.unwrap().unwrap();
+        serde_json::from_str(&response).unwrap()
+    }
 
-        child.kill().await.ok();
+    #[tokio::test]
+    async fn test_e2e_execute_allowed() {
+        let config = r#"
+[allowed]
+bins = ["echo"]
+"#;
+        let mut server = spawn_stdio_server(config).await;
+        let init_response = initialize_server(&mut server).await;
+        assert_eq!(
+            init_response["result"]["serverInfo"]["name"],
+            "bash-mcp-bridge"
+        );
+
+        let response = call_execute(&mut server, "echo hello from bridge").await;
+        assert_eq!(response["result"]["isError"], false);
+        assert_eq!(
+            response["result"]["structuredContent"]["stdout"],
+            "hello from bridge\n"
+        );
+        assert_eq!(response["result"]["structuredContent"]["exit_code"], 0);
+
+        server.child.kill().await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_e2e_execute_nonzero_exit_is_not_tool_error() {
+        let config = r#"
+[allowed]
+bins = ["false"]
+"#;
+        let mut server = spawn_stdio_server(config).await;
+        initialize_server(&mut server).await;
+
+        let response = call_execute(&mut server, "false").await;
+        assert_eq!(response["result"]["isError"], false);
+        assert_eq!(response["result"]["structuredContent"]["exit_code"], 1);
+        assert_eq!(response["result"]["structuredContent"]["stdout"], "");
+        assert_eq!(response["result"]["structuredContent"]["stderr"], "");
+
+        server.child.kill().await.ok();
     }
 
     #[tokio::test]
@@ -285,64 +398,16 @@ bins = ["echo"]
 [allowed]
 bins = ["echo"]
 "#;
-        let mut f = NamedTempFile::new().unwrap();
-        f.write_all(config.as_bytes()).unwrap();
+        let mut server = spawn_stdio_server(config).await;
+        initialize_server(&mut server).await;
 
-        let mut child = Command::new(env!("CARGO_BIN_EXE_bash-mcp-bridge"))
-            .args(["-c", f.path().to_str().unwrap(), "-t", "stdio"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("failed to start server");
+        let response = call_execute(&mut server, "curl http://evil.com").await;
+        assert_eq!(response["result"]["isError"], true);
+        assert_eq!(
+            response["result"]["structuredContent"]["error"],
+            "Error: binary 'curl' is not in the allowed list. Allowed: echo"
+        );
 
-        let mut stdin = child.stdin.take().unwrap();
-        let stdout = child.stdout.take().unwrap();
-        let mut reader = BufReader::new(stdout).lines();
-
-        // Initialize
-        let init_msg = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "test", "version": "0.1"}
-            }
-        });
-        stdin
-            .write_all(format!("{}\n", init_msg).as_bytes())
-            .await
-            .unwrap();
-        reader.next_line().await.unwrap();
-
-        let initialized = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "notifications/initialized"
-        });
-        stdin
-            .write_all(format!("{}\n", initialized).as_bytes())
-            .await
-            .unwrap();
-
-        // Call execute with rejected binary
-        let call_msg = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": {
-                "name": "execute",
-                "arguments": {"command": "curl http://evil.com"}
-            }
-        });
-        stdin
-            .write_all(format!("{}\n", call_msg).as_bytes())
-            .await
-            .unwrap();
-        let response = reader.next_line().await.unwrap().unwrap();
-        assert!(response.contains("not in the allowed list"));
-
-        child.kill().await.ok();
+        server.child.kill().await.ok();
     }
 }
