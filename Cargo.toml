@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "MCP server that lets sandboxed agents execute host CLI commands against a binary whitelist"
 license = "MIT"
-repository = "https://github.com/ryanlin/bash-mcp-bridge"
+repository = "https://github.com/ryanlyn/bash-mcp-bridge"
 keywords = ["mcp", "cli", "sandbox", "agent"]
 categories = ["command-line-utilities"]
 

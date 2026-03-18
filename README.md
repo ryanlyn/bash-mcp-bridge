@@ -7,13 +7,13 @@ Commands are executed directly without a shell. Standalone shell operator tokens
 ## Install
 
 ```bash
-cargo install --git https://github.com/ryanlin/bash-mcp-bridge
+cargo install --git https://github.com/ryanlyn/bash-mcp-bridge
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/ryanlin/bash-mcp-bridge
+git clone https://github.com/ryanlyn/bash-mcp-bridge
 cd bash-mcp-bridge
 cargo build --release
 ```
