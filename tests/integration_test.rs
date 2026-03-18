@@ -155,3 +155,50 @@ mod executor_tests {
         assert!(result.is_err());
     }
 }
+
+mod execution_tests {
+    #[tokio::test]
+    async fn test_execute_allowed_command() {
+        let allowed = vec!["echo".to_string()];
+        let result =
+            bash_bridge_mcp::executor::execute("echo hello world", &allowed, 30).await.unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), "hello world");
+        assert!(result.stderr.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_execute_rejected_binary() {
+        let allowed = vec!["echo".to_string()];
+        let result =
+            bash_bridge_mcp::executor::execute("curl http://evil.com", &allowed, 30).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not in the allowed list"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_nonzero_exit() {
+        let allowed = vec!["false".to_string()];
+        let result = bash_bridge_mcp::executor::execute("false", &allowed, 30).await.unwrap();
+        assert_ne!(result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute_timeout() {
+        let allowed = vec!["sleep".to_string()];
+        let result = bash_bridge_mcp::executor::execute("sleep 60", &allowed, 1).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_binary_not_found() {
+        let allowed = vec!["nonexistent_binary_xyz".to_string()];
+        let result =
+            bash_bridge_mcp::executor::execute("nonexistent_binary_xyz", &allowed, 30).await;
+        assert!(result.is_err());
+    }
+}
