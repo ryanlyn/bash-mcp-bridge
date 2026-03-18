@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use notify::{Event, EventKind, RecursiveMode, Watcher};
 use serde::Deserialize;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -96,5 +97,28 @@ impl ConfigStore {
 
     pub fn port(&self) -> u16 {
         self.config.read().unwrap().server.port
+    }
+
+    pub fn spawn_watcher(&self) -> Result<notify::RecommendedWatcher> {
+        let store = self.clone();
+        let path = self.path.clone();
+        let mut watcher = notify::recommended_watcher(
+            move |res: std::result::Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_)) {
+                        match store.reload() {
+                            Ok(()) => {
+                                tracing::info!(bins = ?store.allowed_bins(), "config reloaded")
+                            }
+                            Err(e) => {
+                                tracing::warn!(%e, "failed to reload config, keeping previous")
+                            }
+                        }
+                    }
+                }
+            },
+        )?;
+        watcher.watch(path.parent().unwrap_or(&path), RecursiveMode::NonRecursive)?;
+        Ok(watcher)
     }
 }

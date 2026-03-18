@@ -33,6 +33,9 @@ async fn main() -> Result<()> {
         "loaded config"
     );
 
+    let _watcher = config.spawn_watcher()?;
+    tracing::info!("watching config file for changes");
+
     match cli.transport.as_str() {
         "stdio" => {
             let server = BashBridgeServer::new(config)
