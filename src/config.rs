@@ -89,4 +89,12 @@ impl ConfigStore {
     pub fn timeout(&self) -> u64 {
         self.config.read().unwrap().server.timeout
     }
+
+    pub fn host(&self) -> String {
+        self.config.read().unwrap().server.host.clone()
+    }
+
+    pub fn port(&self) -> u16 {
+        self.config.read().unwrap().server.port
+    }
 }
