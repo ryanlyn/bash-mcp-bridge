@@ -65,12 +65,25 @@ pub struct ConfigStore {
 }
 
 impl ConfigStore {
-    pub fn new(path: &Path) -> Result<Self> {
-        let path = path.canonicalize()
-            .with_context(|| format!("failed to resolve config path: {}", path.display()))?;
-        let config = Config::from_file(&path)?;
+    pub fn new(path: Option<&Path>, allow_overrides: Vec<String>) -> Result<Self> {
+        let (resolved_path, mut config) = if let Some(p) = path {
+            let canonical = p.canonicalize()
+                .with_context(|| format!("failed to resolve config path: {}", p.display()))?;
+            let cfg = Config::from_file(&canonical)?;
+            (Some(canonical), cfg)
+        } else {
+            (None, Config {
+                server: ServerConfig::default(),
+                allowed: AllowedConfig { bins: vec![] },
+            })
+        };
+
+        if !allow_overrides.is_empty() {
+            config.allowed.bins = allow_overrides;
+        }
+
         Ok(Self {
-            path,
+            path: resolved_path.unwrap_or_default(),
             config: Arc::new(RwLock::new(config)),
         })
     }

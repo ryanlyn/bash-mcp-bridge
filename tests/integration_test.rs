@@ -66,7 +66,7 @@ bins = ["gog"]
         let mut f = NamedTempFile::new().unwrap();
         f.write_all(toml_content.as_bytes()).unwrap();
 
-        let store = bash_mcp_bridge::config::ConfigStore::new(f.path()).unwrap();
+        let store = bash_mcp_bridge::config::ConfigStore::new(Some(f.path()), vec![]).unwrap();
         assert_eq!(store.allowed_bins(), vec!["gog"]);
 
         let new_content = r#"

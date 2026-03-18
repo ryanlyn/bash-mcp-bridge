@@ -9,13 +9,17 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser)]
 #[command(name = "bash-mcp-bridge", about = "MCP server for safe host command execution")]
 struct Cli {
-    /// Path to config file
-    #[arg(short, long, default_value = "config.toml")]
-    config: PathBuf,
+    /// Path to config file (optional if --allow is provided)
+    #[arg(short, long)]
+    config: Option<PathBuf>,
 
     /// Transport: "stdio" or "http"
     #[arg(short, long, default_value = "stdio")]
     transport: String,
+
+    /// Allowed binary names (overrides config file whitelist, repeatable)
+    #[arg(long)]
+    allow: Vec<String>,
 }
 
 #[tokio::main]
@@ -26,15 +30,25 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let config = ConfigStore::new(&cli.config)?;
+
+    if cli.config.is_none() && cli.allow.is_empty() {
+        anyhow::bail!("provide --config <file> or at least one --allow <binary>");
+    }
+
+    let config = ConfigStore::new(cli.config.as_deref(), cli.allow)?;
 
     tracing::info!(
         bins = ?config.allowed_bins(),
         "loaded config"
     );
 
-    let _watcher = config.spawn_watcher()?;
-    tracing::info!("watching config file for changes");
+    let _watcher = if cli.config.is_some() {
+        let w = config.spawn_watcher()?;
+        tracing::info!("watching config file for changes");
+        Some(w)
+    } else {
+        None
+    };
 
     match cli.transport.as_str() {
         "stdio" => {
