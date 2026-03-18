@@ -1,0 +1,7 @@
+[server]
+host = "127.0.0.1"
+port = 8741
+timeout = 120
+
+[allowed]
+bins = ["gog", "uv"]
